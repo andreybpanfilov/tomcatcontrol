@@ -86,7 +86,7 @@ force_kill() {
     kill -9 $srvr_pid
     return $?
   else
-    echo "Jboss is not currently running" >&2
+    print_err "Jboss is not currently running" >&2
     return 1
   fi
 }
@@ -100,7 +100,7 @@ make_thread_dump() {
     kill -3 $srvr_pid
     return $?
   else
-    echo "Jboss is not currently running" >&2
+    print_err "Jboss is not currently running" >&2
     return 1
   fi
 }
@@ -114,7 +114,7 @@ list_thread_dump() {
     sleep 1
     less +"?Full thread dump Java HotSpot" -- "$OutFile"
   else
-    echo "Jboss is not currently running" >&2
+    print_err "Jboss is not currently running" >&2
     return 1
   fi
 }
@@ -329,12 +329,12 @@ check_deadlock() {
 ###############################################################################
 check_dirs() {
   if [ ! -d "$CATALINA_HOME" ]; then
-    echo "Directory '$CATALINA_HOME' not found.  Make sure \$CATALINA_HOME directory exists and is accessible" >&2
+    print_err "Directory '$CATALINA_HOME' not found.  Make sure \$CATALINA_HOME directory exists and is accessible" >&2
     exit 1
   fi
 
   if [ ! -d "$CATALINA_BASE" ]; then
-    echo "Directory '$CATALINA_BASE' not found.  Make sure \$CATALINA_BASE directory exists and is accessible" >&2
+    print_err "Directory '$CATALINA_BASE' not found.  Make sure \$CATALINA_BASE directory exists and is accessible" >&2
     exit 1
   fi
 
@@ -350,13 +350,13 @@ check_dirs() {
 do_start() {
   # Make sure server is not already started
   if monitor_is_running; then
-    echo "Tomcat has already been started" >&2
+    print_err "Tomcat has already been started" >&2
     return 1
   fi
   # If monitor is not running, but if we can determine that the Tomcat
   # process is running, then say that server is already running.
   if java_is_running; then
-    echo "Tomcat has already been started" >&2
+    print_err "Tomcat has already been started" >&2
     return 1
   fi
   # Save previous server output log
@@ -370,11 +370,22 @@ do_start() {
   # Now start the server and monitor loop
   start_and_monitor_server &
   # Wait for server to start up
+
+
+  count=0
   while is_alive $! && server_not_yet_started; do
     sleep 1
+    count=`expr ${count} + 1`
+    if [ "x$StartTimeout" != "x0" ]; then
+      if [ $count -gt $StartTimeout ]; then
+        print_err "Tomcat failed to start within $StartTimeout seconds, exiting" >&2
+        do_kill
+        return 1
+      fi
+    fi
   done
   if server_not_yet_started; then
-    echo "Tomcat failed to start (see server output log for details)" >&2
+    print_err "Tomcat failed to start (see server output log for details)" >&2
     return 1
   fi
   return 0
@@ -497,7 +508,7 @@ setup_tomcat_cmdline() {
   # Setup the classpath
   runjar="$CATALINA_HOME/bin/bootstrap.jar"
   if [ ! -f "$runjar" ]; then
-    echo "Missing required file: $runjar" >&2
+    print_err "Missing required file: $runjar" >&2
     return 1
   fi
 
@@ -530,8 +541,8 @@ setup_tomcat_cmdline() {
   if [ -r "$CATALINA_HOME/bin/setclasspath.sh" ]; then
     . "$CATALINA_HOME/bin/setclasspath.sh"
   else
-    echo "Cannot find $CATALINA_HOME/bin/setclasspath.sh"
-    echo "This file is needed to run this program"
+    print_err "Cannot find $CATALINA_HOME/bin/setclasspath.sh"
+    print_err "This file is needed to run this program"
     exit 1
   fi
 
@@ -539,7 +550,7 @@ setup_tomcat_cmdline() {
   if [ "x$JAVA_HOME" != "x" -a -x "$JAVA_HOME/bin/java" ]; then
     JAVA="$JAVA_HOME/bin/java"
   else
-    echo "Please specify a valid JAVA_HOME" >&2
+    print_err "Please specify a valid JAVA_HOME" >&2
     return 1
   fi
 
@@ -636,7 +647,7 @@ echo $CommandArgs
 do_kill() {
   read_java_pid
   if [ "x$?" != "x0" -o "x$srvr_pid" = "x" ]; then
-    echo "Tomcat is not currently running" >&2
+    print_err "Tomcat is not currently running" >&2
     return 1
   fi
 
@@ -652,7 +663,7 @@ do_kill() {
   done
   if monitor_is_running; then
     write_state FORCE_SHUTTING_DOWN:Y:N
-    echo "Server process did not terminate in $StopTimeout seconds after being signaled to terminate, killing" 2>&1
+    print_err "Server process did not terminate in $StopTimeout seconds after being signaled to terminate, killing" >&2
     kill -9 $srvr_pid
   fi
 }
@@ -729,7 +740,7 @@ do_command() {
     GETLOG) cat "$OutFile" 2>$NullDevice ;;
     TAILLOG) while true; do tail -100f "$OutFile" 2>$NullDevice; done ;;
     THREADDUMP) list_thread_dump ;;
-    *)      echo "Unrecognized command: $1" >&2 ;;
+    *)      print_err "Unrecognized command: $1" >&2 ;;
     esac
 }
 
@@ -762,12 +773,12 @@ NullDevice=/dev/null
 ###############################################################################
 
 if [ ! -x /sbin/fuser ]; then
-  echo "/sbin/fuser executable does not exist"
+  print_err "/sbin/fuser executable does not exist" >&2
   exit 1
 fi
 
 if [ "x$BASH" = "x" ]; then
-  echo "current shell is not a bash"
+  print_err "current shell is not a bash" >&2
   exit 1
 fi
 
@@ -790,7 +801,7 @@ while getopts hD:c:r: flag "$@"; do
     D)
      JAVA_OPTS="$JAVA_OPTS -D$OPTARG"
     ;;
-    *) echo "Unrecognized option: $flag" >&2
+    *) print_err "Unrecognized option: $flag" >&2
      exit 1
     ;;
   esac
@@ -801,13 +812,13 @@ if [ ${OPTIND} -gt 1 ]; then
 fi
 
 if [ $# -lt 1 ]; then
-  echo "Please specify a command to execute"
+  print_err "Please specify a command to execute" >&2
   print_usage
   exit 1
 fi
 
 if [ "x$CATALINA_HOME" = "x" ]; then
-  echo "Please specify CATALINA_HOME directory"
+  print_err "Please specify CATALINA_HOME directory" >&2
   print_usage
   exit 1
 fi
@@ -839,6 +850,10 @@ fi
 
 if [ "x$StopTimeout" = "x" ]; then
   StopTimeout=60
+fi
+
+if [ "x$StartTimeout" = "x" ]; then
+  StartTimeout=0
 fi
 
 do_command
