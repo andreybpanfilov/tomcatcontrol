@@ -232,16 +232,18 @@ compute_diff_time() {
 # Kills process tree                                                          #
 ###############################################################################
 killtree() {
-    local pid=$1
-    local sig=${2-TERM}
-    print_info "Stopping pid $pid"
-    kill -stop $pid 
+  local pid=$1
+  local sig=${2-TERM}
+  print_info "Stopping pid $pid"
+  kill -stop $pid
+  if [ "x$?" = "x0" ]; then
     for child in `ps -o pid --no-headers --ppid $pid`; do
-        killtree $child $sig
+      killtree $child $sig
     done
     print_info "Sending $sig signal to $pid"
     kill -$sig $pid
     kill -CONT $pid
+  fi
 }
 
 ###############################################################################
@@ -401,27 +403,20 @@ start_and_monitor_server() {
 
     if [ "x$LogRotateSize" != "x0" ]; then
       start_log_rotate &
-      rotate_pid=$!
-      print_info "Starting log rotating, pid $rotate_pid"
+      print_info "Starting log rotating, pid $!"
     fi
 
     if [ "x$DeadlockDetectionInterval" != "x0" ]; then
       start_deadlock_detection &
-      dd_pid=$!
-      print_info "Starting deadlock detection, pid $dd_pid"
+      print_info "Starting deadlock detection, pid $!"
     fi
 
     start_server_script
-    
-    if [ "x$rotate_pid" != "x" ]; then
-      print_info "Killing log rotating, pid $rotate_pid"
-      killtree $rotate_pid
-    fi
 
-    if [ "x$dd_pid" != "x" ]; then
-      print_info "Killing deadlock detection, pid $dd_pid"
-      killtree $dd_pid
-    fi
+    for job_pid in `jobs -p`; do
+      print_info "Killing pid $job_pid"
+      killtree $job_pid
+    done
 
     read_file "$StateFile"
     case $REPLY in
@@ -649,15 +644,15 @@ do_kill() {
   write_state SHUTTING_DOWN:Y:N
   kill $srvr_pid
 
-  # Now wait for up to 60 seconds for monitor to die
+  # Now wait for up to $StopTimeout seconds for monitor to die
   count=0
-  while [ $count -lt 60 ] && monitor_is_running; do
+  while [ $count -lt $StopTimeout ] && monitor_is_running; do
     sleep 1
     count=`expr ${count} + 1`
   done
   if monitor_is_running; then
     write_state FORCE_SHUTTING_DOWN:Y:N
-    echo "Server process did not terminate in 60 seconds after being signaled to terminate, killing" 2>&1
+    echo "Server process did not terminate in $StopTimeout seconds after being signaled to terminate, killing" 2>&1
     kill -9 $srvr_pid
   fi
 }
@@ -840,6 +835,10 @@ fi
 
 if [ "x$DeadlockDetectionInterval" = "x" ]; then
   DeadlockDetectionInterval=300
+fi
+
+if [ "x$StopTimeout" = "x" ]; then
+  StopTimeout=60
 fi
 
 do_command
