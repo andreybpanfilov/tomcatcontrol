@@ -86,7 +86,7 @@ force_kill() {
     kill -9 $srvr_pid
     return $?
   else
-    print_err "Jboss is not currently running" >&2
+    print_err "Tomcat is not currently running" >&2
     return 1
   fi
 }
@@ -100,7 +100,7 @@ make_thread_dump() {
     kill -3 $srvr_pid
     return $?
   else
-    print_err "Jboss is not currently running" >&2
+    print_err "Tomcat is not currently running" >&2
     return 1
   fi
 }
@@ -114,7 +114,7 @@ list_thread_dump() {
     sleep 1
     less +"?Full thread dump Java HotSpot" -- "$OutFile"
   else
-    print_err "Jboss is not currently running" >&2
+    print_err "Tomcat is not currently running" >&2
     return 1
   fi
 }
